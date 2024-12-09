@@ -1,79 +1,184 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <title>Apigee KVM Viewer</title>
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-  </head>
+<html lang="en">
 
-  <body onload="init()" class="body">
-    <!-------------------------- Placeholders --------------------------->
-    <h2>Apigee KVM GUI</h2>
-    <div>
-      <select id="env-select" onchange="selectEnv(this.value)">
-      </select>
-      <div id="list-view"></div>
-      <div id="content-view">
-        <div id="table-view"></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apigee KVM Viewer</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet"
+    crossorigin="anonymous" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <style>
+    .size-1-5-x {
+      font-size: 1.25rem;
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <div class="container my-4">
+    <h2 class="text-center mb-4">Apigee KVM GUI</h2>
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+      <h5><span id="breadcrumb-path"></span></h5>
+    </nav>
+
+    <div class="row">
+      <!-- Coluna de Environments (list-group) -->
+      <div class="col-md-2 mt-3">
+        <div id="env-view" class="list-group"></div>
       </div>
 
+      <!-- Coluna de KVMs -->
+      <div id="kvm-container" class="col-md-3 mt-3" style="display: none;">
+        <div class="input-group mb-3">
+          <input type="text" id="new-kvm-name" class="form-control" placeholder="New KVM" />
+          <button id="add-kvm-btn" class="btn btn-primary">Add KVM</button>
+        </div>
+        <div id="kvm-view" class="list-group"></div>
+      </div>
+
+      <!-- Coluna de Entradas do KVM selecionado -->
+      <div class="col-md-7 mt-3">
+        <div id="content-view">
+          <div id="table-view"></div>
+        </div>
+      </div>
     </div>
+  </div>
 
-    <!--------------------------- Templates ---------------------------->
-    <script id="list-template" type="text/x-handlebars-template">
-      {{#each items}}
-        <li data-item-id="{{id}}" name="{{name}}">{{name}}</li>
-      {{/each}}
-      <button id="new-kvm-btn" onclick="addKvm();">New KVM +</button>
-      <button id="delete-kvm-btn" onclick="deleteKvm();">Delete KVM</button>
-    </script>
+  <!-- Template da lista de Environments com paginação -->
+  <script id="env-list-template" type="text/x-handlebars-template">
+    {{#each items}}
+      <div class="list-group-item d-flex align-items-center env-item" data-env-name="{{this}}">
+        <span class="truncate-text" title="{{this}}">{{this}}</span>
+      </div>
+    {{/each}}
 
-    <script id="table-template" type="text/x-handlebars-template">
-      <div style="padding: 3% 10%;">
-        <button id="return-btn" onclick="returnHomePage();"><i class="fas fa-arrow-left"></i> Return</button>
+    {{#if showPagination}}
+    <div class="d-flex justify-content-between mt-2">
+      <button class="env-prev"
+              {{#if prevDisabled}}disabled{{/if}}
+              onclick="prevEnvPage()"
+              style="background:none; border:none; padding:0; cursor:pointer;">
+        <i class="fas fa-chevron-left size-1-5-x"></i>
+      </button>
+      <button class="env-next"
+              {{#if nextDisabled}}disabled{{/if}}
+              onclick="nextEnvPage()"
+              style="background:none; border:none; padding:0; cursor:pointer;">
+        <i class="fas fa-chevron-right size-1-5-x"></i>
+      </button>
+    </div>
+    {{/if}}
+  </script>
 
-        <h3>{{kvm}}</h3>
+  <!-- Template da lista de KVMs com paginação e botão único de delete -->
+  <script id="kvm-list-template" type="text/x-handlebars-template">
+    {{#each items}}
+      <div class="list-group-item d-flex align-items-center kvm-item" data-kvm-name="{{name}}">
+        <span class="kvm-name" title="{{name}}">{{name}}</span>
+      </div>
+    {{/each}}
 
-        <div class="popup" id="popup">
-          <textarea
-            name="entry"
-            id="entries"
-            cols="40"
-            rows="5"
-            style="resize: none"
-          >[
-  { "name": "", "value": ""}
-]</textarea>
+    {{#if showPagination}}
+    <div class="d-flex justify-content-between mt-2">
+      <button {{#if prevDisabled}}disabled{{/if}} onclick="prevKvmPage()" style="background:none; border:none; padding:0; cursor:pointer;">
+        <i class="fas fa-chevron-left size-1-5-x"></i>
+      </button>
+      <button {{#if nextDisabled}}disabled{{/if}} onclick="nextKvmPage()" style="background:none; border:none; padding:0; cursor:pointer;">
+        <i class="fas fa-chevron-right size-1-5-x"></i>
+      </button>
+    </div>
+    {{/if}}
+
+    <div class="mt-3 d-flex justify-content-begin">
+      <button class="btn btn-danger" id="delete-active-kvm-btn" onclick="deleteActiveKvm()" disabled>Delete KVM</button>
+    </div>
+  </script>
+
+  <!-- Template da tabela de entradas com paginação -->
+  <script id="table-template" type="text/x-handlebars-template">    
+    <div class="p-4 border bg-white rounded shadow-sm">
+
+      <div class="mb-3">
+        <div class="d-flex justify-content-end align-items-center mb-4" style="width: 100%;">                  
+          <button id="export-json-btn" class="btn p-0 border-0 bg-transparent" style="color: grey;" 
+            title="Export to JSON" onclick="exportToJSON();">
+            <i class="fas fa-solid fa-download fa-2x"></i>
+          </button>
         </div>
 
-        <button name="add-entry-btn popup-flex-item" id="add-entry-btn">Add</button>
-        <button id="export-json-btn">Export to JSON</button>
-        <button id="delete-entry-kvm-btn">Delete Entry</button>
-
-        <table id="kvm-entries-table">
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{#each items}}
-              <tr>
-                <td>{{name}}</td>
-                <td>{{value}}</td>
-              </tr>
-            {{/each}}
-          </tbody>
-        </table>
-
+        <div class="form-check form-switch mb-3">
+          <input id="flexSwitchCheckDefault" class="form-check-input" type="checkbox" role="switch">
+          <label class="form-check-label" for="flexSwitchCheckDefault">JSON</label>
+        </div>
+        
+        <div id="entries-container" style="display: flex; flex-direction: column; width: 100%;">
+          <div id="top-line" class="d-flex align-items-center mb-3" style="width: 100%;">
+            <div class="d-flex align-items-center" style="width: 3%;">
+              <!-- <button class="btn p-0 border-0 bg-transparent" disabled title="Remove Name/Value Pair">
+                <i class="fas fa-minus"></i>
+              </button> -->
+            </div>
+      
+            <div class="d-flex align-items-center ms-2" style="width: 94%;">
+              <input type="text" id="top-name" class="form-control me-2" placeholder="Enter Name" style="max-width: 100%;" />
+              <input type="text" id="top-value" class="form-control" placeholder="Enter Value" style="max-width: 100%;" />
+            </div>
+      
+            <div class="d-flex justify-content-end ms-2" style="width: 3%;">
+              <button class="btn p-0 border-0 bg-transparent" onclick="pushKvmPair();" title="Add Name/Value Pair">
+                <i class="fas fa-plus fa-2x"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      
+        <div class="d-flex justify-content-end mt-3" style="width: 100%;">
+          <button id="add-entry-btn" class="btn btn-primary" onclick="addEntry();">Add Pairs</button>
+        </div>
       </div>
-    </script>
-    <!--------------------------- Imports ---------------------------->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.7.7/handlebars.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="/index.js"></script>
 
-  </body>
+      <table id="kvm-entries-table" class="table table-hover mt-3 ms-2 me-2">
+        <thead>
+          <tr>
+            <th style="width: 25%;">Name</th>
+            <th style="width: 60%;">Value</th>
+            <th style="width: 15%;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each items}}
+            <tr>
+              <td style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 200px;" title="{{name}}">{{name}}</td>
+              <td style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 400px;" title="{{value}}">{{value}}</td>
+              <td style="text-align: center; color:red"><button class="btn p-0 border-0 bg-transparent" onclick="deleteEntry('{{id}}');"><i class="fas fa-trash-alt"></i></button></td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+
+      {{#if showPagination}}
+      <div class="d-flex justify-content-between mt-2">
+        <button {{#if prevDisabled}}disabled{{/if}} onclick="prevEntryPage()" style="background:none; border:none; padding:0; cursor:pointer;">
+          <i class="fas fa-chevron-left size-1-5-x"></i>
+        </button>
+        <button {{#if nextDisabled}}disabled{{/if}} onclick="nextEntryPage()" style="background:none; border:none; padding:0; cursor:pointer;">
+          <i class="fas fa-chevron-right size-1-5-x"></i>
+        </button>
+      </div>
+      {{/if}}
+    </div>
+  </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/handlebars.js/4.7.7/handlebars.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"
+    crossorigin="anonymous"></script>
+  <script src="/index.js"></script>
+</body>
+
 </html>
