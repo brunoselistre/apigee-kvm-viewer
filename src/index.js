@@ -16,9 +16,9 @@ const state = {
   kvmPage: 0,
   entryPage: 0,
 
-  ENV_PAGE_SIZE: 14,
-  KVM_PAGE_SIZE: 13,
-  ENTRY_PAGE_SIZE: 7
+  ENV_PAGE_SIZE: 12,
+  KVM_PAGE_SIZE: 9,
+  ENTRY_PAGE_SIZE: 5
 };
 
 // Regex para validar JSON array de objetos com 'name' e 'value'
@@ -27,22 +27,79 @@ const jsonArrayRegex = /^\[\s*\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"value"\s*:\s*(\d+
 //==============================
 // Inicialização
 //==============================
+
+
 document.addEventListener("DOMContentLoaded", async () => {
-  const configs = await loadConfig();
-  ORG = configs.ORG;
-  TOKEN = configs.TOKEN;
+  ORG = localStorage.getItem("org");
+  TOKEN = localStorage.getItem("token");
 
-  apigee = createApigeeClient(TOKEN);
+  if (ORG && TOKEN) {
+    apigee = createApigeeClient(TOKEN);
+    state.ENVS = await listEnvironments();
 
-  state.ENVS = await listEnvironments();
-  resetSelection();
+    if (ORG) {
+      document.getElementById("organization").value = ORG;
+    }
 
-  document.getElementById("add-kvm-btn").addEventListener("click", handleAddKvm);
+    if (state.ENVS.length > 0) {
+      document.getElementById("main").classList.remove("d-none");
+      document.getElementById("config-form").classList.add("d-none");
+      document.getElementById("logo").classList.add("d-none");
+    }
+
+    resetSelection();
+  } else {
+    alert("Missing/deprecated localStorage items: 'org' and/or 'token'.");
+  }
 });
+
+
 
 //==============================
 // Funções Utilitárias
 //==============================
+
+// Store org & token  
+async function submitConfig() {
+  // Get form elements
+  var organizationInput = document.getElementById('organization');
+  var tokenInput = document.getElementById('token');
+
+  // Get values from form inputs
+  var organization = organizationInput.value;
+  var token = tokenInput.value;
+
+  localStorage.setItem("org", organization);
+  localStorage.setItem("token", token);
+
+  document.getElementById("main").classList.remove("d-none");
+  document.getElementById("config-form").classList.add("d-none");
+  document.getElementById("logo").classList.add("d-none");
+
+  let envs = await listEnvironments();
+  if (envs) {
+    window.location.reload()
+  }
+}
+
+async function logout() {
+  const tokenExists = localStorage.getItem("token") !== null;
+  const orgExists = localStorage.getItem("org") !== null;
+  if (!tokenExists && !orgExists) {
+    alert("You are already logged out!");
+    return;
+  }
+
+  const userConfirmed = confirm("Are you sure you want to log out?");
+  if (userConfirmed) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("org");
+
+    alert("You have been logged out successfully!");
+    window.location.reload();
+  }
+}
+
 function createApigeeClient(token) {
   return axios.create({
     baseURL: "https://apigee.googleapis.com",
@@ -51,10 +108,12 @@ function createApigeeClient(token) {
   });
 }
 
+/** DEPRECATED
 async function loadConfig() {
   const response = await fetch("config.json");
   return response.json();
 }
+ */
 
 function clearViews() {
   document.getElementById("env-view").innerHTML = "";
@@ -152,7 +211,6 @@ async function listEnvironments() {
     return response.data;
   } catch (error) {
     console.error(error);
-    alert("Error: Missing or invalid token");
     return [];
   }
 }
@@ -250,7 +308,11 @@ async function renderHomePage() {
 
   kvmView.innerHTML = template({ items: subset, showPagination, prevDisabled, nextDisabled });
 
+  const addKvmBtn = document.getElementById("add-kvm-btn");
   const deleteBtn = document.getElementById("delete-active-kvm-btn");
+
+  addKvmBtn.addEventListener("click", handleAddKvm);
+
   if (deleteBtn) {
     deleteBtn.disabled = !state.selectedKvm;
   }
@@ -361,14 +423,13 @@ async function getEntriesKvm(kvm) {
         valueInput.hidden = true;
         valueInput.value = "";
       } else {
-        nameInput.placeholder = "Type Name";
-        valueInput.placeholder = "Type Value";
+        nameInput.placeholder = "Key";
+        valueInput.placeholder = "Value";
         valueInput.hidden = false;
       }
     });
   }
 }
-
 
 function prevEnvPage() {
   if (canGoPrev(state.envPage)) {
@@ -426,8 +487,8 @@ function createTopLine() {
   inputDiv.className = "d-flex align-items-center ms-2";
   inputDiv.style.width = "94%";
 
-  const nameInput = createInput("top-name", "Enter Name");
-  const valueInput = createInput("top-value", "Enter Value");
+  const nameInput = createInput("top-name", "Key");
+  const valueInput = createInput("top-value", "Value");
   inputDiv.appendChild(nameInput);
   inputDiv.appendChild(valueInput);
 
@@ -438,7 +499,7 @@ function createTopLine() {
   const plusBtn = document.createElement("button");
   plusBtn.className = "btn p-0 border-0 bg-transparent";
   plusBtn.style.color = "green";
-  plusBtn.title = "Add Name/Value Pair";
+  plusBtn.title = "Stage entries";
   plusBtn.innerHTML = '<i class="fas fa-plus"></i>';
   plusBtn.onclick = pushKvmPair;
 
@@ -537,20 +598,8 @@ function removeKvmLine(event) {
 // Ações de Entries / KVM
 //==============================
 function exportToJSON() {
-  const table = document.getElementById('kvm-entries-table');
-  const rows = table.querySelectorAll('tbody tr');
 
-  const entries = [];
-  rows.forEach(row => {
-    const cells = row.querySelectorAll('td');
-    const entry = {
-      name: cells[0]?.innerText.trim(),
-      value: cells[1]?.innerText.trim()
-    };
-    entries.push(entry);
-  });
-
-  const json = JSON.stringify(entries, null, 2);
+  const json = JSON.stringify(state.currentEntryList, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
 
   const url = URL.createObjectURL(blob);
@@ -603,7 +652,7 @@ window.deleteEntry = async function (entryKey) {
   const kvm = (state.selectedKvm || "").trim();
   if (!kvm) return alert("No KVM selected.");
 
-  if (confirm(`Are you sure you want to delete entry: ${entryKey}? This action cannot be undone.`)) {
+  if (confirm(`Are you sure you want to delete entry: ${entryKey}? \nThis action cannot be undone.`)) {
     await apigee.delete(
       `/v1/organizations/${ORG}/environments/${state.CUR_ENV}/keyvaluemaps/${encodeURIComponent(kvm)}/entries/${encodeURIComponent(entryKey)}`
     );
@@ -611,11 +660,23 @@ window.deleteEntry = async function (entryKey) {
   }
 };
 
-window.deleteActiveKvm = function () {
-  if (!state.selectedKvm) {
+window.deleteActiveKvm = async function () {
+  const kvm = (state.selectedKvm || "").trim();
+  if (!kvm) {
     return alert("No KVM selected.");
   }
-  removeKvm(state.selectedKvm);
+
+  const confirmation = confirm(`Are you sure you want to delete the active KVM: "${kvm}"?\nThis action cannot be undone.`);
+  if (!confirmation) return;
+
+  try {
+    await removeKvm(kvm);
+    alert(`KVM "${kvm}" has been successfully deleted.`);
+    resetSelection();
+  } catch (error) {
+    console.error("Error deleting KVM:", error);
+    alert("An error occurred while trying to delete the KVM. Please check the console for more details.");
+  }
 };
 
 // Expor funções de paginação do escopo global caso sejam chamadas no template

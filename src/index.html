@@ -5,6 +5,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Apigee KVM Viewer</title>
+  <button class="logout-button"
+    style="border: none; background: none; display: flex; align-items: center; position: fixed; top: 2%; right: 2%; cursor: pointer;"
+    onclick="logout()">
+    <i class="fas fa-sign-out-alt" style="font-size: 24px;"></i>
+  </button>
+  <div id="logo" class="logo" style="margin-top: 2%;margin-bottom: 2%; display: flex;flex-direction: column;align-items: center;">
+    <img src="/assets/img/logo-kvm.png" alt="Logo" style="width: 150px; height: auto;">
+  </div>
+
   <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet"
     crossorigin="anonymous" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -17,12 +26,26 @@
 </head>
 
 <body class="bg-light">
-  <div class="container my-4">
-    <h2 class="text-center mb-4">Apigee KVM GUI</h2>
 
+  <!-- Formulário de Configuração -->
+  <div id="config-form" class="container d-flex flex-column align-items-center mt-5">
+    <form class="w-25">
+      <div class="mb-2">
+        <input type="text" id="organization" name="organization" class="form-control" placeholder="Organization"
+          required>
+      </div>
+      <div class="mb-2">
+        <input type="text" id="token" name="token" class="form-control" placeholder="Token" required>
+      </div>
+      <button type="button" class="btn btn-primary w-100" onclick="submitConfig()">Submit</button>
+    </form>
+  </div>
+
+  <!-- Conteúdo Principal -->
+  <div id="main" class="container my-4 d-none">
     <!-- Breadcrumb -->
     <nav aria-label="breadcrumb" class="mb-3">
-      <h5><span id="breadcrumb-path"></span></h5>
+      <p id="breadcrumb-path" style="color: grey; font-style: italic;"></p>
     </nav>
 
     <div class="row">
@@ -33,10 +56,6 @@
 
       <!-- Coluna de KVMs -->
       <div id="kvm-container" class="col-md-3 mt-3" style="display: none;">
-        <div class="input-group mb-3">
-          <input type="text" id="new-kvm-name" class="form-control" placeholder="New KVM" />
-          <button id="add-kvm-btn" class="btn btn-primary">Add KVM</button>
-        </div>
         <div id="kvm-view" class="list-group"></div>
       </div>
 
@@ -77,6 +96,10 @@
 
   <!-- Template da lista de KVMs com paginação e botão único de delete -->
   <script id="kvm-list-template" type="text/x-handlebars-template">
+    <div class="input-group mb-2">
+      <input type="text" id="new-kvm-name" class="form-control" placeholder="New KVM" />
+      <button id="add-kvm-btn" class="btn btn-primary">Add KVM</button>
+    </div>
     {{#each items}}
       <div class="list-group-item d-flex align-items-center kvm-item" data-kvm-name="{{name}}">
         <span class="kvm-name" title="{{name}}">{{name}}</span>
@@ -94,26 +117,30 @@
     </div>
     {{/if}}
 
+
+
     <div class="mt-3 d-flex justify-content-begin">
-      <button class="btn btn-danger" id="delete-active-kvm-btn" onclick="deleteActiveKvm()" disabled>Delete KVM</button>
+      <button class="btn btn-danger w-100" id="delete-active-kvm-btn" onclick="deleteActiveKvm()" disabled>Delete KVM</button>
     </div>
   </script>
 
   <!-- Template da tabela de entradas com paginação -->
-  <script id="table-template" type="text/x-handlebars-template">    
-    <div class="p-4 border bg-white rounded shadow-sm">
+  <script id="table-template" type="text/x-handlebars-template">
+    <div class="p-4 border bg-white rounded">
 
       <div class="mb-3">
-        <div class="d-flex justify-content-end align-items-center mb-4" style="width: 100%;">                  
+
+
+        <div class="d-flex align-items-start form-check form-switch mb-3 column-gap-4">
+          <span>
+            <input id="flexSwitchCheckDefault" class="form-check-input" type="checkbox" role="switch">
+            <label class="form-check-label" for="flexSwitchCheckDefault">JSON</label>
+          </span>
+
           <button id="export-json-btn" class="btn p-0 border-0 bg-transparent" style="color: grey;" 
             title="Export to JSON" onclick="exportToJSON();">
-            <i class="fas fa-solid fa-download fa-2x"></i>
+            <i class="fas fa-solid fa-download fa-1x"></i>
           </button>
-        </div>
-
-        <div class="form-check form-switch mb-3">
-          <input id="flexSwitchCheckDefault" class="form-check-input" type="checkbox" role="switch">
-          <label class="form-check-label" for="flexSwitchCheckDefault">JSON</label>
         </div>
         
         <div id="entries-container" style="display: flex; flex-direction: column; width: 100%;">
@@ -125,19 +152,19 @@
             </div>
       
             <div class="d-flex align-items-center ms-2" style="width: 94%;">
-              <input type="text" id="top-name" class="form-control me-2" placeholder="Enter Name" style="max-width: 100%;" />
-              <input type="text" id="top-value" class="form-control" placeholder="Enter Value" style="max-width: 100%;" />
+              <input type="text" id="top-name" class="form-control me-2" placeholder="Key" style="max-width: 100%;" />
+              <input type="text" id="top-value" class="form-control" placeholder="Value" style="max-width: 100%;" />
             </div>
       
             <div class="d-flex justify-content-end ms-2" style="width: 3%;">
-              <button class="btn p-0 border-0 bg-transparent" onclick="pushKvmPair();" title="Add Name/Value Pair">
-                <i class="fas fa-plus fa-2x"></i>
+              <button class="btn p-0 border-0 bg-transparent" onclick="pushKvmPair();" title="Stage entry">
+                <i class="fas fa-plus size-1-5-x"></i>
               </button>
             </div>
           </div>
         </div>
       
-        <div class="d-flex justify-content-end mt-3" style="width: 100%;">
+        <div class="d-flex flex-column" style="width: 100%;">
           <button id="add-entry-btn" class="btn btn-primary" onclick="addEntry();">Add Pairs</button>
         </div>
       </div>
@@ -145,7 +172,7 @@
       <table id="kvm-entries-table" class="table table-hover mt-3 ms-2 me-2">
         <thead>
           <tr>
-            <th style="width: 25%;">Name</th>
+            <th style="width: 25%;">Key</th>
             <th style="width: 60%;">Value</th>
             <th style="width: 15%;"></th>
           </tr>
@@ -153,8 +180,8 @@
         <tbody>
           {{#each items}}
             <tr>
-              <td style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 200px;" title="{{name}}">{{name}}</td>
-              <td style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 400px;" title="{{value}}">{{value}}</td>
+              <td style="overflow: auto; white-space: nowrap; max-width: 200px;" title="{{name}}">{{name}}</td>
+              <td style="overflow: auto; white-space: nowrap; max-width: 400px;" title="{{value}}">{{value}}</td>
               <td style="text-align: center; color:red"><button class="btn p-0 border-0 bg-transparent" onclick="deleteEntry('{{id}}');"><i class="fas fa-trash-alt"></i></button></td>
             </tr>
           {{/each}}
@@ -166,7 +193,7 @@
         <button {{#if prevDisabled}}disabled{{/if}} onclick="prevEntryPage()" style="background:none; border:none; padding:0; cursor:pointer;">
           <i class="fas fa-chevron-left size-1-5-x"></i>
         </button>
-        <button {{#if nextDisabled}}disabled{{/if}} onclick="nextEntryPage()" style="background:none; border:none; padding:0; cursor:pointer;">
+        <button {{#if nextDisabled}}disabled{{/if}} onclick="nextEntryPage()" class="pagination-next" style="background:none; border:none; padding:0; cursor:pointer;">
           <i class="fas fa-chevron-right size-1-5-x"></i>
         </button>
       </div>
